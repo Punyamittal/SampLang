@@ -1,15 +1,19 @@
-# 🔧 SampLang — A Sample Programming Language
+# 🗣️ SampLang
 
-> 🚀 *Just a simple sandbox to test how building and documenting a language works.*
+A minimal toy programming language written in JavaScript with Hindi-inspired keywords.  
+Designed to help understand how interpreters and compilers work under the hood.
 
 ---
 
-## 💡 What is MyLang?
+## 🔤 Syntax
 
-**MyLang** is a minimal toy programming language created for learning purposes.  
-It supports basic math, variable declarations, and print statements — all in a syntax that's readable and fun.
+BolLang supports:
+- Variable declaration using `ye`
+- Arithmetic with `+`
+- Console output using `bol`
 
-```mylang
-let x = 5;
-let y = x * 2;
-print(y);
+```bol
+ye x = 10
+ye y = 90
+ye sum = x + y
+bol sum
