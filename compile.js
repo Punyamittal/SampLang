@@ -17,7 +17,7 @@ function lexer(input) {
                 char = input[++cursor];
             }
 
-            if (word === 'ye' || word === 'bol') {
+            if (['ye', 'bol', 'agar', 'warna'].includes(word)) {
                 tokens.push({ type: 'keyword', value: word });
             } else {
                 tokens.push({ type: 'identifier', value: word });
@@ -35,19 +35,41 @@ function lexer(input) {
             continue;
         }
 
-        if (/[\+\-\%\*\/\=]/.test(char)) {
-            tokens.push({ type: 'operator', value: char });
+        if (/[\+\-\*\/\%\=\>\<]/.test(char)) {
+            let op = char;
+            // Check for >=, <=, ==
+            if ((char === '>' || char === '<' || char === '=') && input[cursor + 1] === '=') {
+                op += '=';
+                cursor++;
+            }
+            tokens.push({ type: 'operator', value: op });
             cursor++;
             continue;
         }
 
-        // Ignore unrecognized characters
-        cursor++;
+        cursor++; // skip unknown characters
     }
 
     return tokens;
 }
 
+// Evaluates expressions like: x + 5 * y
+function evaluateExpression(tokens, variables) {
+    const expression = tokens.map(t => {
+        if (t.type === 'number') return t.value;
+        if (t.type === 'identifier') {
+            if (!(t.value in variables)) throw new Error(`Undefined variable: ${t.value}`);
+            return variables[t.value];
+        }
+        if (t.type === 'operator') return t.value;
+        throw new Error(`Invalid token in expression`);
+    });
+
+    // Evaluate using Function constructor (safe because inputs are parsed)
+    return Function('"use strict"; return (' + expression.join(' ') + ')')();
+}
+
+// Compiler: Executes the code based on tokens
 function compiler(input) {
     const tokens = lexer(input);
     const variables = {};
@@ -57,41 +79,83 @@ function compiler(input) {
         const token = tokens[i];
 
         if (token.type === 'keyword' && token.value === 'ye') {
-            const varName = tokens[++i].value;
-            i++; // skip '='
-            let value;
-            if (tokens[i].type === 'number') {
-                value = tokens[i++].value;
-            } else if (tokens[i].type === 'identifier') {
-                value = variables[tokens[i++].value];
-            }
+            const varNameToken = tokens[++i];
+            if (!varNameToken || varNameToken.type !== 'identifier') throw new Error('Expected variable name after ye');
+            const varName = varNameToken.value;
 
-            if (tokens[i] && tokens[i].type === 'operator' && tokens[i].value === '+') {
-                i++;
-                const right = tokens[i].type === 'identifier'
-                    ? variables[tokens[i++].value]
-                    : tokens[i++].value;
-                value += right;
-            }
+            const eqToken = tokens[++i];
+            if (!eqToken || eqToken.type !== 'operator' || eqToken.value !== '=') throw new Error(`Expected '=' after variable name`);
 
-            variables[varName] = value;
-
-        } else if (token.type === 'keyword' && token.value === 'bol') {
-            const varName = tokens[++i].value;
-            console.log(variables[varName]);
+            // Read expression until next keyword or line ends
+            const exprTokens = [];
             i++;
-        } else {
+            while (i < tokens.length && tokens[i].type !== 'keyword') {
+                exprTokens.push(tokens[i++]);
+            }
+
+            variables[varName] = evaluateExpression(exprTokens, variables);
+        }
+
+        else if (token.type === 'keyword' && token.value === 'bol') {
+            const exprTokens = [];
+            i++;
+            while (i < tokens.length && tokens[i].type !== 'keyword') {
+                exprTokens.push(tokens[i++]);
+            }
+            const result = evaluateExpression(exprTokens, variables);
+            console.log(result);
+        }
+
+        else if (token.type === 'keyword' && token.value === 'agar') {
+            const condTokens = [];
+            i++;
+            while (i < tokens.length && tokens[i].type !== 'keyword') {
+                condTokens.push(tokens[i++]);
+            }
+
+            const conditionResult = evaluateExpression(condTokens, variables);
+
+            if (tokens[i]?.type === 'keyword' && tokens[i].value === 'bol') {
+                const trueExpr = [];
+                i++;
+                while (i < tokens.length && tokens[i].type !== 'keyword') {
+                    trueExpr.push(tokens[i++]);
+                }
+
+                if (conditionResult) {
+                    const result = evaluateExpression(trueExpr, variables);
+                    console.log(result);
+                } else {
+                    if (tokens[i]?.type === 'keyword' && tokens[i].value === 'warna') {
+                        const falseExpr = [];
+                        i++;
+                        while (i < tokens.length && tokens[i].type !== 'keyword') {
+                            falseExpr.push(tokens[i++]);
+                        }
+                        const result = evaluateExpression(falseExpr, variables);
+                        console.log(result);
+                    }
+                }
+            } else {
+                throw new Error("Expected 'bol' after condition");
+            }
+        }
+
+        else {
             i++;
         }
     }
 }
 
-// Sample Code
+// 🧪 Sample Code
 const code = `
 ye x = 10
-ye y = 90
-ye sum = x + y
-bol sum
+ye y = 5
+ye z = x * y + 2
+bol z
+agar x > y bol x warna bol y
+ye a = z % y
+bol a
 `;
 
 compiler(code);
