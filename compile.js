@@ -1,3 +1,4 @@
+// === Lexer ===
 function lexer(input) {
     const tokens = [];
     let cursor = 0;
@@ -37,7 +38,6 @@ function lexer(input) {
 
         if (/[\+\-\*\/\%\=\>\<]/.test(char)) {
             let op = char;
-            // Check for >=, <=, ==
             if ((char === '>' || char === '<' || char === '=') && input[cursor + 1] === '=') {
                 op += '=';
                 cursor++;
@@ -47,107 +47,117 @@ function lexer(input) {
             continue;
         }
 
-        cursor++; // skip unknown characters
+        cursor++; // Skip unrecognized characters
     }
 
     return tokens;
 }
 
-// Evaluates expressions like: x + 5 * y
-function evaluateExpression(tokens, variables) {
-    const expression = tokens.map(t => {
-        if (t.type === 'number') return t.value;
-        if (t.type === 'identifier') {
-            if (!(t.value in variables)) throw new Error(`Undefined variable: ${t.value}`);
-            return variables[t.value];
-        }
-        if (t.type === 'operator') return t.value;
-        throw new Error(`Invalid token in expression`);
-    });
-
-    // Evaluate using Function constructor (safe because inputs are parsed)
-    return Function('"use strict"; return (' + expression.join(' ') + ')')();
-}
-
-// Compiler: Executes the code based on tokens
-function compiler(input) {
-    const tokens = lexer(input);
-    const variables = {};
+// === Parser ===
+function parser(tokens) {
+    const statements = [];
     let i = 0;
+
+    function parseExpression() {
+        const expr = [];
+        while (i < tokens.length && tokens[i].type !== 'keyword') {
+            expr.push(tokens[i++]);
+        }
+        return expr;
+    }
 
     while (i < tokens.length) {
         const token = tokens[i];
 
-        if (token.type === 'keyword' && token.value === 'ye') {
-            const varNameToken = tokens[++i];
-            if (!varNameToken || varNameToken.type !== 'identifier') throw new Error('Expected variable name after ye');
-            const varName = varNameToken.value;
-
-            const eqToken = tokens[++i];
-            if (!eqToken || eqToken.type !== 'operator' || eqToken.value !== '=') throw new Error(`Expected '=' after variable name`);
-
-            // Read expression until next keyword or line ends
-            const exprTokens = [];
-            i++;
-            while (i < tokens.length && tokens[i].type !== 'keyword') {
-                exprTokens.push(tokens[i++]);
+        if (token.type === 'keyword') {
+            if (token.value === 'ye') {
+                const name = tokens[++i];
+                i++; // skip '='
+                const expr = parseExpression();
+                statements.push({ type: 'assignment', name: name.value, expr });
             }
 
-            variables[varName] = evaluateExpression(exprTokens, variables);
+            else if (token.value === 'bol') {
+                i++;
+                const expr = parseExpression();
+                statements.push({ type: 'print', expr });
+            }
+
+            else if (token.value === 'agar') {
+                i++;
+                const condition = parseExpression();
+
+                const trueToken = tokens[i++];
+                if (trueToken.value !== 'bol') throw new Error(`Expected 'bol' after condition`);
+
+                const trueBranch = parseExpression();
+
+                let falseBranch = [];
+                if (tokens[i]?.value === 'warna') {
+                    i++;
+                    falseBranch = parseExpression();
+                }
+
+                statements.push({
+                    type: 'if',
+                    condition,
+                    trueBranch,
+                    falseBranch
+                });
+            }
+
+            else {
+                throw new Error(`Unknown keyword: ${token.value}`);
+            }
+        } else {
+            i++;
+        }
+    }
+
+    return statements;
+}
+
+// === Evaluator ===
+function evaluateExpression(expr, variables) {
+    const jsExpr = expr.map(t => {
+        if (t.type === 'number') return t.value;
+        if (t.type === 'identifier') return variables[t.value];
+        if (t.type === 'operator') return t.value;
+    });
+
+    return Function('"use strict"; return (' + jsExpr.join(' ') + ')')();
+}
+
+function evaluate(ast) {
+    const variables = {};
+
+    for (const stmt of ast) {
+        if (stmt.type === 'assignment') {
+            variables[stmt.name] = evaluateExpression(stmt.expr, variables);
         }
 
-        else if (token.type === 'keyword' && token.value === 'bol') {
-            const exprTokens = [];
-            i++;
-            while (i < tokens.length && tokens[i].type !== 'keyword') {
-                exprTokens.push(tokens[i++]);
-            }
-            const result = evaluateExpression(exprTokens, variables);
+        else if (stmt.type === 'print') {
+            const result = evaluateExpression(stmt.expr, variables);
             console.log(result);
         }
 
-        else if (token.type === 'keyword' && token.value === 'agar') {
-            const condTokens = [];
-            i++;
-            while (i < tokens.length && tokens[i].type !== 'keyword') {
-                condTokens.push(tokens[i++]);
-            }
-
-            const conditionResult = evaluateExpression(condTokens, variables);
-
-            if (tokens[i]?.type === 'keyword' && tokens[i].value === 'bol') {
-                const trueExpr = [];
-                i++;
-                while (i < tokens.length && tokens[i].type !== 'keyword') {
-                    trueExpr.push(tokens[i++]);
-                }
-
-                if (conditionResult) {
-                    const result = evaluateExpression(trueExpr, variables);
-                    console.log(result);
-                } else {
-                    if (tokens[i]?.type === 'keyword' && tokens[i].value === 'warna') {
-                        const falseExpr = [];
-                        i++;
-                        while (i < tokens.length && tokens[i].type !== 'keyword') {
-                            falseExpr.push(tokens[i++]);
-                        }
-                        const result = evaluateExpression(falseExpr, variables);
-                        console.log(result);
-                    }
-                }
-            } else {
-                throw new Error("Expected 'bol' after condition");
-            }
-        }
-
-        else {
-            i++;
+        else if (stmt.type === 'if') {
+            const condition = evaluateExpression(stmt.condition, variables);
+            const branch = condition ? stmt.trueBranch : stmt.falseBranch;
+            const result = evaluateExpression(branch, variables);
+            console.log(result);
         }
     }
 }
 
-// 🧪 Sample Code
+// === Runner ===
+function run(input) {
+    const tokens = lexer(input);
+    const ast = parser(tokens);
+    evaluate(ast);
+}
+
+// === Sample Program ===
 const code = `
 ye x = 10
 ye y = 5
@@ -158,4 +168,4 @@ ye a = z % y
 bol a
 `;
 
-compiler(code);
+run(code);
